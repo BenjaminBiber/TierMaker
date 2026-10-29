@@ -33,3 +33,6 @@ export const api = {
 };
 
 export const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Same-origin paths only, so `?next=` can't become an open redirect; mirrors safeNext on the server. */
+export const safeNext = (value: string | null) => (value && /^\/(?![/\\])/.test(value) ? value : '/');

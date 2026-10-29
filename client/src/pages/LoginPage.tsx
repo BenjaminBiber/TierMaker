@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { api, errorMessage } from '../api';
+import { useSearchParams } from 'react-router-dom';
+import { api, errorMessage, safeNext } from '../api';
 import { useAuth } from '../auth';
 import { ErrorNote } from '../components/ui';
 import type { User } from '../types';
@@ -15,9 +15,9 @@ const PREVIEW_TIERS = [
 
 export default function LoginPage() {
   const { config, error: serverError, setUser } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
   const [params] = useSearchParams();
+  const next = safeNext(params.get('next'));
+  const goingToBoard = /^\/boards\/\d+/.test(next);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -30,8 +30,8 @@ export default function LoginPage() {
     setError(null);
     try {
       const { user } = await api.post<{ user: User }>(`/auth/${mode}`, { username, password });
+      // App's /login route sends signed-in users on to `next`.
       setUser(user);
-      navigate((location.state as { from?: string } | null)?.from ?? '/', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -60,12 +60,16 @@ export default function LoginPage() {
 
       <section className="login-card">
         <h1>TierMaker</h1>
-        <p className="lede">Gemeinsam ranken: Jede:r sortiert für sich, der Median entscheidet.</p>
+        <p className="lede">
+          {goingToBoard
+            ? 'Melde dich an, danach geht es direkt weiter zum Board.'
+            : 'Gemeinsam ranken: Jede:r sortiert für sich, der Median entscheidet.'}
+        </p>
 
         <ErrorNote error={serverError ?? error} />
 
         {config?.googleAuth && (
-          <a className="btn btn-google" href="/api/auth/google">
+          <a className="btn btn-google" href={next === '/' ? '/api/auth/google' : `/api/auth/google?next=${encodeURIComponent(next)}`}>
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
               <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.9z" />
               <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />

@@ -1,4 +1,5 @@
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { safeNext } from './api';
 import { useAuth } from './auth';
 import { Avatar, IconButton } from './components/ui';
 import LoginPage from './pages/LoginPage';
@@ -13,10 +14,13 @@ export default function App() {
 
   if (loading) return <div className="splash" aria-busy="true" />;
   if (!user) {
+    // The target travels in the URL, so it survives reloads and the Google round trip.
+    const target = location.pathname + location.search;
+    const login = target === '/' ? '/login' : `/login?next=${encodeURIComponent(target)}`;
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<Navigate to="/login" replace state={{ from: location.pathname }} />} />
+        <Route path="*" element={<Navigate to={login} replace />} />
       </Routes>
     );
   }
@@ -46,6 +50,7 @@ export default function App() {
       </header>
       <main className="page">
         <Routes>
+          <Route path="/login" element={<Navigate to={safeNext(new URLSearchParams(location.search).get('next'))} replace />} />
           <Route path="/" element={<BoardsPage />} />
           <Route path="/new" element={<NewBoardPage />} />
           <Route path="/boards/:id/*" element={<BoardPage />} />

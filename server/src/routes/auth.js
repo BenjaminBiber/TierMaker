@@ -21,6 +21,12 @@ import {
 export const authRouter = Router();
 
 const STATE_COOKIE = 'tm_oauth_state';
+const NEXT_COOKIE = 'tm_oauth_next';
+
+/** Only same-origin paths, so the login can't be abused as an open redirect. */
+export function safeNext(value) {
+  return typeof value === 'string' && /^\/(?![/\\])/.test(value) ? value : '/';
+}
 
 authRouter.get('/config', (_req, res) => {
   res.json({
@@ -41,25 +47,30 @@ authRouter.post('/logout', (req, res) => {
 
 // ── Google ──────────────────────────────────────────────────────────────
 
-authRouter.get('/google', (_req, res) => {
+authRouter.get('/google', (req, res) => {
   if (!config.googleAuth) throw new HttpError(404, 'Google-Login ist nicht konfiguriert');
   const state = crypto.randomBytes(16).toString('base64url');
-  res.cookie(STATE_COOKIE, state, {
+  const cookie = {
     httpOnly: true,
     sameSite: 'lax',
     secure: config.cookieSecure,
     maxAge: 10 * 60_000,
     path: '/api/auth/google',
-  });
+  };
+  res.cookie(STATE_COOKIE, state, cookie);
+  res.cookie(NEXT_COOKIE, safeNext(req.query.next), cookie);
   res.redirect(googleAuthorizeUrl(state));
 });
 
 authRouter.get('/google/callback', async (req, res) => {
-  const fail = (msg) => res.redirect(`/login?error=${encodeURIComponent(msg)}`);
+  const next = safeNext(req.cookies?.[NEXT_COOKIE]);
+  const fail = (msg) =>
+    res.redirect(`/login?error=${encodeURIComponent(msg)}${next === '/' ? '' : `&next=${encodeURIComponent(next)}`}`);
   if (!config.googleAuth) return fail('Google-Login ist nicht konfiguriert');
 
   const expected = req.cookies?.[STATE_COOKIE];
   res.clearCookie(STATE_COOKIE, { path: '/api/auth/google' });
+  res.clearCookie(NEXT_COOKIE, { path: '/api/auth/google' });
   if (req.query.error) return fail('Google-Anmeldung abgebrochen');
   if (!expected || expected !== req.query.state || typeof req.query.code !== 'string') {
     return fail('Ungültige Anmeldeanfrage, bitte erneut versuchen');
@@ -69,7 +80,7 @@ authRouter.get('/google/callback', async (req, res) => {
     const profile = await fetchGoogleProfile(req.query.code);
     const userId = upsertGoogleUser(profile);
     createSession(res, userId);
-    res.redirect('/');
+    res.redirect(next);
   } catch (err) {
     console.error('Google login failed:', err.message);
     fail(err instanceof HttpError ? err.message : 'Google-Anmeldung fehlgeschlagen');

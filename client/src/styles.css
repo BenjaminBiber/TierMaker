@@ -994,6 +994,37 @@ select:focus {
   gap: 0.35rem;
   min-width: 0;
 }
+.board-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.board-title-row h1 {
+  min-width: 0;
+}
+.share {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.share .is-done {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.share-status:empty {
+  display: none;
+}
+.share-status {
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: picker-in 0.2s var(--ease-out);
+}
 .board-desc-wrap {
   display: flex;
   align-items: flex-end;
