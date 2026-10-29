@@ -1,4 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type PointerEvent,
+  type ReactNode,
+  type RefObject,
+  type SetStateAction,
+} from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -26,7 +38,15 @@ export default function VoteView({ board, setBoard }: { board: Board; setBoard: 
   const [detail, setDetail] = useState<Item | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
   const open = board.status === 'open';
+
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setSheetOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sheetOpen]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -111,7 +131,10 @@ export default function VoteView({ board, setBoard }: { board: Board; setBoard: 
   const tileProps = {
     disabled: !open,
     selectedId,
-    onSelect: (id: number) => setSelectedId((cur) => (cur === id ? null : id)),
+    onSelect: (id: number) => {
+      setSelectedId((cur) => (cur === id ? null : id));
+      setSheetOpen(false);
+    },
     onInfo: setDetail,
   };
   const pool = byTier.get(POOL) ?? [];
@@ -134,6 +157,8 @@ export default function VoteView({ board, setBoard }: { board: Board; setBoard: 
         onDragStart={(e) => {
           setActiveId(Number(e.active.id));
           setSelectedId(null);
+          // Get the sheet out of the way so the tiers are free to drop on.
+          setSheetOpen(false);
         }}
         onDragCancel={() => setActiveId(null)}
         onDragEnd={onDragEnd}
@@ -150,6 +175,8 @@ export default function VoteView({ board, setBoard }: { board: Board; setBoard: 
             remaining={pool.length}
             onZoneClick={onZoneClick}
             picking={selectedItem !== null}
+            sheetOpen={sheetOpen}
+            onSheet={setSheetOpen}
             {...tileProps}
             header={
               <>
@@ -275,6 +302,8 @@ function PoolZone({
   remaining,
   onZoneClick,
   picking,
+  sheetOpen,
+  onSheet,
   header,
   search,
   hint,
@@ -285,22 +314,131 @@ function PoolZone({
   remaining: number;
   onZoneClick: (id: number | null) => void;
   picking: boolean;
+  sheetOpen: boolean;
+  onSheet: (open: boolean) => void;
   header: ReactNode;
   search: ReactNode;
   hint: ReactNode;
   done: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: POOL, disabled: tile.disabled });
+  const sheetRef = useRef<HTMLElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const zoneRef = useRef<HTMLDivElement | null>(null);
+  const [peek, setPeek] = useState(0);
+  const drag = useSheetDrag(sheetRef, sheetOpen, onSheet);
+
+  // Collapsed, the sheet shows its top part down to the end of the first tile row.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const zone = zoneRef.current;
+      if (!zone) return;
+      const first = zone.firstElementChild as HTMLElement | null;
+      const pad = parseFloat(getComputedStyle(zone).paddingTop) || 0;
+      setPeek(Math.round(zone.offsetTop + pad + (first?.offsetHeight ?? 0) + pad));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (topRef.current) observer.observe(topRef.current);
+    if (zoneRef.current) observer.observe(zoneRef.current);
+    return () => observer.disconnect();
+  }, [items.length, remaining, picking]);
+
+  useEffect(() => {
+    if (!sheetOpen && zoneRef.current) zoneRef.current.scrollTop = 0;
+  }, [sheetOpen]);
+
   return (
-    <aside className={`pool ${isOver ? 'is-over' : ''} ${picking ? 'is-picking' : ''}`} aria-label="Noch nicht eingeordnet">
-      <div className="pool-head">{header}</div>
-      {search}
-      {hint}
-      <div ref={setNodeRef} className={`pool-zone ${remaining === 0 ? 'is-empty' : ''}`} onClick={() => onZoneClick(null)}>
-        {remaining === 0 ? done : items.length === 0 ? <p className="muted pool-none">Kein Treffer.</p> : items.map((item) => <Tile key={item.id} item={item} {...tile} />)}
-      </div>
-    </aside>
+    <>
+      {sheetOpen && <div className="sheet-backdrop" onClick={() => onSheet(false)} aria-hidden />}
+      <aside
+        ref={sheetRef}
+        className={`pool ${isOver ? 'is-over' : ''} ${picking ? 'is-picking' : ''} ${sheetOpen ? 'is-open' : ''}`}
+        style={{ '--peek': `${peek}px` } as CSSProperties}
+        aria-label="Noch nicht eingeordnet"
+      >
+        <div className="pool-top" ref={topRef} {...drag}>
+          <button
+            type="button"
+            className="sheet-handle"
+            aria-expanded={sheetOpen}
+            aria-controls="pool-zone"
+            aria-label={sheetOpen ? 'Auswahl einklappen' : 'Alle offenen Einträge zeigen'}
+            // Pointer taps are handled by the drag hook; this covers Enter/Space.
+            onClick={(e) => e.detail === 0 && onSheet(!sheetOpen)}
+          >
+            <span />
+          </button>
+          <div className="pool-head">{header}</div>
+          {search}
+          {hint}
+        </div>
+        <div
+          id="pool-zone"
+          ref={(node) => {
+            setNodeRef(node);
+            zoneRef.current = node;
+          }}
+          className={`pool-zone ${remaining === 0 ? 'is-empty' : ''}`}
+          onClick={() => onZoneClick(null)}
+        >
+          {remaining === 0 ? done : items.length === 0 ? <p className="muted pool-none">Kein Treffer.</p> : items.map((item) => <Tile key={item.id} item={item} {...tile} />)}
+        </div>
+      </aside>
+      <div className="sheet-spacer" style={{ height: peek }} aria-hidden />
+    </>
   );
+}
+
+/** Below this width the pool is a bottom sheet instead of a sidebar. */
+const SHEET_QUERY = '(max-width: 999px)';
+
+/** Pull the sheet up or down by its top area; it follows the finger and snaps open or shut on release. */
+function useSheetDrag(sheetRef: RefObject<HTMLElement | null>, open: boolean, onSheet: (open: boolean) => void) {
+  const state = useRef<{ y: number; t: number; base: number; max: number; offset: number; moved: boolean; onHandle: boolean } | null>(null);
+
+  const end = (e: PointerEvent<HTMLElement>) => {
+    const s = state.current;
+    const sheet = sheetRef.current;
+    state.current = null;
+    if (!s || !sheet) return;
+    sheet.style.transform = '';
+    sheet.style.transition = '';
+    // Pointer capture retargets the click away from the handle, so taps are recognised here.
+    if (!s.moved) {
+      if (s.onHandle && e.type === 'pointerup') onSheet(!open);
+      return;
+    }
+    const velocity = (e.clientY - s.y) / Math.max(1, e.timeStamp - s.t);
+    const shouldOpen = Math.abs(velocity) > 0.4 ? velocity < 0 : s.offset < s.max / 2;
+    onSheet(shouldOpen);
+  };
+
+  return {
+    onPointerDown: (e: PointerEvent<HTMLElement>) => {
+      const sheet = sheetRef.current;
+      if (!sheet || e.button !== 0 || !matchMedia(SHEET_QUERY).matches) return;
+      const target = e.target as Element;
+      if (target.closest('input, a, button:not(.sheet-handle)')) return;
+      const max = sheet.offsetHeight - (parseFloat(sheet.style.getPropertyValue('--peek')) || 0);
+      const base = open ? 0 : max;
+      state.current = { y: e.clientY, t: e.timeStamp, base, max, offset: base, moved: false, onHandle: !!target.closest('.sheet-handle') };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e: PointerEvent<HTMLElement>) => {
+      const s = state.current;
+      const sheet = sheetRef.current;
+      if (!s || !sheet) return;
+      const dy = e.clientY - s.y;
+      if (!s.moved && Math.abs(dy) < 6) return;
+      s.moved = true;
+      s.offset = Math.min(s.max, Math.max(0, s.base + dy));
+      sheet.style.transition = 'none';
+      sheet.style.transform = `translateY(${s.offset}px)`;
+    },
+    onPointerUp: end,
+    onPointerCancel: end,
+  };
 }
 
 function Tile({ item, disabled, selectedId, onSelect, onInfo }: TileHandlers & { item: Item }) {
@@ -308,8 +446,8 @@ function Tile({ item, disabled, selectedId, onSelect, onInfo }: TileHandlers & {
   const selected = selectedId === item.id;
   const el = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    // Auto-advanced selection may sit off-screen in the horizontally scrolling tray.
-    if (selected) el.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    // Auto-advanced selection may sit below the fold of the sidebar list.
+    if (selected && !matchMedia(SHEET_QUERY).matches) el.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [selected]);
   return (
     <div

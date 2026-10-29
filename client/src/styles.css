@@ -1288,7 +1288,15 @@ select:focus {
   text-align: center;
 }
 
-/* Pool: sticky sidebar on wide screens, docked tray on narrow ones */
+/* Pool: sticky sidebar on wide screens, pull-up bottom sheet on narrow ones */
+.pool-top {
+  display: contents;
+}
+.sheet-handle,
+.sheet-backdrop,
+.sheet-spacer {
+  display: none;
+}
 .pool {
   position: sticky;
   top: calc(var(--topbar-h) + 1rem);
@@ -1485,38 +1493,93 @@ select:focus {
   .page:has(.vote) {
     padding-bottom: 0;
   }
+  /* Bottom sheet: collapsed it peeks out down to the first tile row, pulled up it lists everything */
   .pool {
-    top: auto;
-    bottom: 0;
+    position: fixed;
+    inset: auto 0 0;
     z-index: var(--z-tray);
+    height: calc(100dvh - var(--topbar-h) - 12px);
     max-height: none;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.5rem 0.75rem;
-    margin: 0.5rem calc(-1 * var(--gutter)) 0;
-    padding: 0.65rem var(--gutter) calc(0.65rem + env(safe-area-inset-bottom));
+    gap: 0;
+    padding: 0 var(--gutter) env(safe-area-inset-bottom);
     border-width: 1px 0 0;
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -12px 32px -8px oklch(0.1 0.03 278 / 0.35);
+    transform: translateY(calc(100% - var(--peek) - env(safe-area-inset-bottom)));
+    transition: transform 0.34s var(--ease-out);
+  }
+  .pool.is-open {
+    transform: none;
+  }
+  .pool-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.5rem 0.75rem;
+    padding-bottom: 0.5rem;
+    touch-action: none;
+  }
+  .sheet-handle {
+    grid-column: 1 / -1;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: grab;
+  }
+  .sheet-handle span {
+    width: 42px;
+    height: 5px;
+    border-radius: 99px;
+    background: var(--muted);
+    opacity: 0.5;
+  }
+  .sheet-handle:focus-visible span {
+    opacity: 1;
+    background: var(--accent);
   }
   .pool-head,
-  .pool-zone,
-  .pool-hint {
+  .picker {
     grid-column: 1 / -1;
   }
   .pool-head:has(+ .search) {
     grid-column: 1;
   }
   .pool-zone {
-    display: grid;
-    grid-auto-flow: column;
-    grid-template-rows: repeat(2, var(--tile));
-    grid-auto-columns: var(--tile);
+    flex: 1;
     min-height: 0;
-    overflow: auto hidden;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+    align-content: start;
+    overflow: hidden;
+  }
+  .pool.is-open .pool-zone {
+    overflow-y: auto;
+  }
+  .pool-zone .tile,
+  .pool-zone .tile-face {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
   }
   .pool-zone.is-empty {
     display: flex;
+  }
+  .sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-tray) - 1);
+    background: oklch(0.1 0.03 278 / 0.5);
+    touch-action: none;
+    animation: fade-in 0.2s var(--ease-out);
+  }
+  .sheet-spacer {
+    display: block;
+    box-sizing: content-box;
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .pool-done {
     grid-template-columns: auto 1fr auto;
@@ -1531,11 +1594,6 @@ select:focus {
   .pool.is-picking .pool-head,
   .pool.is-picking .search {
     display: none;
-  }
-  /* Below the tray tiles, in thumb reach */
-  .picker {
-    grid-column: 1 / -1;
-    order: 1;
   }
 }
 
