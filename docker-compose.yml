@@ -1,0 +1,36 @@
+services:
+  tiermaker:
+    image: benjaminbiber/tiermaker:latest
+    container_name: tiermaker
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - tiermaker-data:/data          # SQLite-DB + hochgeladene Bilder
+    environment:
+      # Öffentliche Adresse, unter der die App erreichbar ist (ohne Slash am Ende).
+      # Daraus wird die Google-Redirect-URI gebildet: <PUBLIC_URL>/api/auth/google/callback
+      PUBLIC_URL: "http://localhost:3000"
+
+      # ── Google-Login (aktiv, sobald ID und Secret gesetzt sind) ──
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      # Optional: nur diese Domains zulassen, z. B. "firma.de,partner.de"
+      GOOGLE_ALLOWED_DOMAINS: ""
+      # Google-Konten mit diesen E-Mails werden Admin
+      ADMIN_EMAILS: ""
+
+      # ── Login mit Benutzername + Passwort ──
+      PASSWORD_AUTH: "true"           # "false" = nur Google-Login
+      ALLOW_REGISTRATION: "true"      # Selbstregistrierung erlauben
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: ""              # leer = zufälliges Passwort, steht beim ersten Start im Log
+
+      # ── Sonstiges ──
+      # COOKIE_SECURE: "true"         # Standard: true, wenn PUBLIC_URL mit https beginnt
+      # SESSION_DAYS: "30"
+      # MAX_UPLOAD_MB: "200"          # max. Größe einer ZIP
+      # MAX_IMAGE_MB: "20"            # max. Größe eines einzelnen Bildes
+
+volumes:
+  tiermaker-data:
